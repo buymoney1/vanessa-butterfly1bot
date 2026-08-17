@@ -8,8 +8,13 @@ export async function GET() {
     return NextResponse.json({ status: 'ok' })
   } catch (error) {
     console.error('Database connection error:', error)
+    
+    const errorMessage = error instanceof Error 
+      ? error.message 
+      : 'Unknown database error'
+    
     return NextResponse.json(
-      { status: 'error', message: error.message }, 
+      { status: 'error', message: errorMessage }, 
       { status: 500 }
     )
   }

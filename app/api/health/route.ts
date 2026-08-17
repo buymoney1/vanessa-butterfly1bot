@@ -15,9 +15,9 @@ export async function GET() {
       }
     }
 
-    // Check Database
+    // Check Database (MongoDB)
     try {
-      await prisma.$queryRaw`SELECT 1`
+      await prisma.$runCommandRaw({ ping: 1 })
       healthData.services.database = 'online'
     } catch (error) {
       healthData.services.database = 'offline'
@@ -67,6 +67,12 @@ export async function GET() {
     } catch (error) {
       healthData.services.webhook = 'offline'
     }
+
+    // Set overall status based on services
+    const allOnline = Object.values(healthData.services).every(
+      service => service === 'online'
+    )
+    healthData.status = allOnline ? 'ok' : 'degraded'
 
     return NextResponse.json(healthData)
   } catch (error) {

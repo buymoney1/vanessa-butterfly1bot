@@ -1,17 +1,20 @@
-
 {
-    "version": 2,
-    "builds": [
-      {
-        "src": "package.json",
-        "use": "@vercel/next"
-      }
-    ],
-    "routes": [
-      {
-        "src": "/api/telegram/webhook",
-        "methods": ["POST", "GET"],
-        "dest": "/api/telegram/webhook"
-      }
-    ]
-  }
+  "version": 2,
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/next"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/telegram/webhook",
+      "methods": ["POST", "GET"],
+      "dest": "/api/telegram/webhook"
+    },
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/$1"
+    }
+  ]
+}

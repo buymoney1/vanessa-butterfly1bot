@@ -3,13 +3,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { ContentSchema } from '@/lib/validators'
 
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
+    const { id } = await params
     const body = await request.json()
     const validatedData = ContentSchema.partial().parse(body)
 
     const content = await prisma.content.update({
-      where: { id: params.id },
+      where: { id },
       data: validatedData,
     })
 
@@ -20,10 +24,15 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
+    const { id } = await params
+    
     await prisma.content.delete({
-      where: { id: params.id },
+      where: { id },
     })
 
     return NextResponse.json({ ok: true })

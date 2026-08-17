@@ -154,7 +154,7 @@ export async function searchPostsByHashtags(hashtags: string[]) {
 // ============ حذف تکراری‌ها ============
 function removeDuplicates(posts: any[]) {
   const uniquePosts = []
-  const seenTexts = new Set()
+  const seenTexts = new Set<string>() // نوع Set را مشخص کنید
 
   for (const post of posts) {
     const text = (post.text || post.caption || '').trim()
@@ -182,8 +182,8 @@ function isSimilar(text1: string, text2: string): boolean {
   if (text1 === text2) return true
   if (text1.includes(text2) || text2.includes(text1)) return true
   
-  const words1 = new Set(text1.split(/\s+/).filter(w => w.length > 2))
-  const words2 = new Set(text2.split(/\s+/).filter(w => w.length > 2))
+  const words1 = new Set<string>(text1.split(/\s+/).filter(w => w.length > 2))
+  const words2 = new Set<string>(text2.split(/\s+/).filter(w => w.length > 2))
   
   if (words1.size === 0 || words2.size === 0) return false
   
