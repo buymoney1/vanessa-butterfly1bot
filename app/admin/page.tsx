@@ -16,7 +16,7 @@ export default function AdminPage() {
   const [password, setPassword] = useState('')
 
   const handleLogin = () => {
-    if (password === process.env.NEXT_PUBLIC_ADMIN_PASSWORD || password === 'admin123') {
+    if (password === process.env.NEXT_PUBLIC_ADMIN_PASSWORD) {
       setIsAuthenticated(true)
       localStorage.setItem('vanca_admin_auth', 'true')
     } else {
