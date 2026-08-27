@@ -24,52 +24,73 @@ import {
 const ADMIN_USERNAME = '@nazanin_zahedi7'
 const ADMIN_TELEGRAM_IDS = [896753676, 91126748] // آیدی‌های عددی ادمین‌ها
 
-// ============ سوالات متداول ============
-const FAQ_QUESTIONS = [
-  {
-    id: 'faq_1',
-    question: '🌸 جنس گل‌ها چیه؟',
-    answer: `🌸 جنس گل‌ها:\n\nگل‌ها از مفتول‌های نازک مخملی تشکیل شدن و جنس مخملی دارن.`
-  },
-  {
-    id: 'faq_2',
-    question: '🌹 گل‌ها طبیعی هستن؟',
-    answer: `🌹 گل‌ها طبیعی هستن یا جاودان؟\n\nگل‌ها جاودان هستن و طبیعی نیستن.\n\nیک بار هزینه می‌کنید و این گل یک عمر ماندگار هست. ✨`
-  },
-  {
-    id: 'faq_3',
-    question: '📦 بسته‌بندی و سالم رسیدن',
-    answer: `📦 بسته‌بندی و سالم رسیدن سفارشات:\n\nاز بابت بسته‌بندی سفارش‌ها خیالتون راحت باشه.\n\nما ۹۰٪ فروشمون آنلاین هست و تا به حال نارضایتی نداشتیم.\n\nبسته‌بندی کارها محکم هست و ما این تضمین رو بهتون میدیم سفارشات رو ۱۰۰٪ سالم تحویل می‌گیرید. ✅`
-  },
-  {
-    id: 'faq_4',
-    question: '🚚 هزینه ارسال چقدره؟',
-    answer: `🚚 هزینه ارسال:\n\nهزینه ارسال بستگی به فاصله مبدا (شیراز) و مقصد (شهر شما) داره.\n\nاما میانگین بین ۱۴۰ الی ۱۷۰ هزینه ارسال هست.`
-  },
-  {
-    id: 'faq_5',
-    question: '📋 هزینه بسته‌بندی و کارتن',
-    answer: `📋 هزینه بسته‌بندی و کارتن:\n\nهزینه بسته‌بندی و کارتن بستگی به سفارش و ابعاد کار موردنظر شما داره:\n\n• سفارشات سایز مینیمال: ۶۰-۸۰\n• سفارشات سایز متوسط: ۸۰-۱۲۰\n• سفارشات سایز بزرگ: ۱۸۰-۲۲۰\n\nبر اساس ابعاد و میزان حساسیت سفارشتون، کارتن مناسب از بابت ابعاد و ضخامت انتخاب و استفاده میشه.`
-  },
-  {
-    id: 'faq_6',
-    question: '🎨 تغییری توی مدل‌ها میتونیم بدیم؟',
-    answer: `🎨 تغییر در مدل‌ها:\n\nتماماً مدل‌ها سفارشی آماده میشن و کاری مد نظرتون هست رو با هر تغییری می‌تونید ثبت سفارش کنید:\n\n• حجم و تعداد گل‌ها\n• رنگ‌بندی گل‌ها\n• مدل و رنگ کاغذ دورپیچ دسته گل\n• ابعاد و اندازه دسته گل\n\nدقیقاً بر اساس سلیقه و خواست شما اجرا میشه. ✨`
-  },
-  {
-    id: 'faq_7',
-    question: '📅 الان سفارش بدم کی ارسال میشه؟',
-    answer: `📅 زمان ارسال:\n\nما ارسالمون شنبه تا شنبه هست.\n\nاول بستگی به حجم سفارشات داره، اما در صورت داشتن ظرفیت سفارش‌گیری، زمانی که شما سفارشتون رو ثبت می‌کنید، اولین شنبه هفته پیش رو براتون ارسال میشه.\n\n💡 هرچه زودتر سفارشتون رو ثبت کنید، زودتر توی اولویت ساخت و اجرا قرار می‌گیرید.\n\nاگر تاریخ خاصی مد نظرتون هست، تاریخ مورد نظر برای تحویل و شهر مقصد رو به ادمین بگید تا دقیق راهنماییتون کنن.`
-  },
-  {
-    id: 'faq_8',
-    question: '⏱️ سفارشم چند روزه به دستم میرسه؟',
-    answer: `⏱️ زمان تحویل:\n\nشنبه که ارسال بشه، دو سه روز بعدش تحویل می‌گیرید. ✨`
+// ============ توابع FAQ داینامیک ============
+async function getFAQsFromDB() {
+  try {
+    const faqs = await prisma.fAQ.findMany({
+      where: { isActive: true },
+      orderBy: { order: 'asc' },
+    })
+    
+    return faqs.map(faq => ({
+      id: `faq_${faq.id}`,
+      question: faq.question,
+      answer: faq.answer,
+    }))
+  } catch (error) {
+    console.error('Error fetching FAQs from DB:', error)
+    return []
   }
-]
+}
+
+async function buildFAQKeyboard() {
+  const faqs = await getFAQsFromDB()
+  
+  if (faqs.length === 0) {
+    return {
+      inline_keyboard: [
+        [{ text: '🔙 بازگشت به منو', callback_data: 'back_to_main' }]
+      ]
+    }
+  }
+  
+  const keyboard = []
+  
+  // ساخت دکمه‌های دو ستونه
+  for (let i = 0; i < faqs.length; i += 2) {
+    const row = []
+    
+    // ستون اول
+    row.push({
+      text: faqs[i].question.length > 30 
+        ? faqs[i].question.substring(0, 27) + '...' 
+        : faqs[i].question,
+      callback_data: faqs[i].id
+    })
+    
+    // ستون دوم (اگر وجود داشته باشد)
+    if (faqs[i + 1]) {
+      row.push({
+        text: faqs[i + 1].question.length > 30 
+          ? faqs[i + 1].question.substring(0, 27) + '...' 
+          : faqs[i + 1].question,
+        callback_data: faqs[i + 1].id
+      })
+    }
+    
+    keyboard.push(row)
+  }
+  
+  // دکمه بازگشت
+  keyboard.push([
+    { text: '🔙 بازگشت به منو', callback_data: 'back_to_main' }
+  ])
+  
+  return { inline_keyboard: keyboard }
+}
 
 // ============ تبدیل callback_data به متن ============
-function getButtonLabel(data: string): string {
+async function getButtonLabel(data: string): Promise<string> {
   const labels: Record<string, string> = {
     'track_order': '📦 پیگیری سفارش',
     'track_name': '👤 جستجو با نام',
@@ -83,10 +104,19 @@ function getButtonLabel(data: string): string {
   }
   
   if (labels[data]) return labels[data]
+  
   if (data.startsWith('faq_')) {
-    const faq = FAQ_QUESTIONS.find(f => f.id === data)
-    return faq ? `❓ ${faq.question}` : `❓ سوال متداول`
+    const faqId = data.replace('faq_', '')
+    try {
+      const faq = await prisma.fAQ.findUnique({
+        where: { id: faqId },
+      })
+      return faq ? `❓ ${faq.question}` : `❓ سوال متداول`
+    } catch {
+      return `❓ سوال متداول`
+    }
   }
+  
   if (data.startsWith('cat_')) return `🏷️ انتخاب هشتگ: ${data.replace('cat_', '')}`
   if (data.startsWith('order_')) return `🛒 کلیک روی سفارش محصول`
   return `🔘 ${data}`
@@ -112,6 +142,20 @@ async function clearUserState(chatId: number) {
   await prisma.settings.deleteMany({
     where: { key: `user_${chatId}_state` },
   })
+}
+
+// ============ منوی اصلی ============
+const mainMenuKeyboard = {
+  inline_keyboard: [
+    [
+      { text: '📦 پیگیری سفارش', callback_data: 'track_order' },
+      { text: '🌸 راهنمای انتخاب', callback_data: 'selection_guide' }
+    ],
+    [
+      { text: '📋 دسته‌بندی محصولات', callback_data: 'categories' },
+      { text: '❓ سوالات متداول', callback_data: 'faq' }
+    ]
+  ]
 }
 
 export async function POST(request: NextRequest) {
@@ -235,19 +279,6 @@ export async function POST(request: NextRequest) {
         data: { userId: user.id },
         include: { messages: true },
       })
-    }
-
-    const mainMenuKeyboard = {
-      inline_keyboard: [
-        [
-          { text: '📦 پیگیری سفارش', callback_data: 'track_order' },
-          { text: '🌸 راهنمای انتخاب', callback_data: 'selection_guide' }
-        ],
-        [
-          { text: '📋 دسته‌بندی محصولات', callback_data: 'categories' },
-          { text: '❓ سوالات متداول', callback_data: 'faq' }
-        ]
-      ]
     }
 
     // ============ HANDLE /start ============
@@ -465,11 +496,12 @@ async function handleCallbackQuery(callbackQuery: any) {
         })
         
         if (conversation) {
+          const buttonLabel = await getButtonLabel(data)
           await prisma.message.create({
             data: {
               conversationId: conversation.id,
               role: 'user',
-              content: `🔘 ${getButtonLabel(data)}`,
+              content: `🔘 ${buttonLabel}`,
             },
           })
         }
@@ -484,19 +516,6 @@ async function handleCallbackQuery(callbackQuery: any) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ callback_query_id: id }),
   })
-
-  const mainMenuKeyboard = {
-    inline_keyboard: [
-      [
-        { text: '📦 پیگیری سفارش', callback_data: 'track_order' },
-        { text: '🌸 راهنمای انتخاب', callback_data: 'selection_guide' }
-      ],
-      [
-        { text: '📋 دسته‌بندی محصولات', callback_data: 'categories' },
-        { text: '❓ سوالات متداول', callback_data: 'faq' }
-      ]
-    ]
-  }
 
   switch (data) {
     case 'track_order':
@@ -533,13 +552,13 @@ async function handleCallbackQuery(callbackQuery: any) {
       await sendTelegramMessageWithKeyboard(chatId, `📮 لطفاً کد پستی خود را وارد کنید:`, mainMenuKeyboard)
       break
 
-      case 'track_code':
-        await saveUserState(chatId, 'waiting_tracking')
-        await sendTelegramMessageWithKeyboard(
-          chatId, 
-          `🔖 لطفاً کد مرسوله خود را وارد کنید:\n\nمثال: 3142920260915135914790`, 
-          mainMenuKeyboard
-        )
+    case 'track_code':
+      await saveUserState(chatId, 'waiting_tracking')
+      await sendTelegramMessageWithKeyboard(
+        chatId, 
+        `🔖 لطفاً کد مرسوله خود را وارد کنید:\n\nمثال: 3142920260915135914790`, 
+        mainMenuKeyboard
+      )
       break
       
     case 'selection_guide':
@@ -575,30 +594,14 @@ async function handleCallbackQuery(callbackQuery: any) {
       break
       
     case 'faq':
-      const faqKeyboard = {
-        inline_keyboard: [
-          [
-            { text: '🌸 جنس گل‌ها', callback_data: 'faq_1' },
-            { text: '🌹 طبیعی بودن', callback_data: 'faq_2' }
-          ],
-          [
-            { text: '📦 بسته‌بندی', callback_data: 'faq_3' },
-            { text: '🚚 هزینه ارسال', callback_data: 'faq_4' }
-          ],
-          [
-            { text: '📋 هزینه بسته‌بندی', callback_data: 'faq_5' },
-            { text: '🎨 تغییر مدل‌ها', callback_data: 'faq_6' }
-          ],
-          [
-            { text: '📅 زمان ارسال', callback_data: 'faq_7' },
-            { text: '⏱️ زمان تحویل', callback_data: 'faq_8' }
-          ],
-          [
-            { text: '🔙 بازگشت به منو', callback_data: 'back_to_main' }
-          ]
-        ]
+      const faqKeyboard = await buildFAQKeyboard()
+      const faqs = await getFAQsFromDB()
+      
+      if (faqs.length === 0) {
+        await sendTelegramMessageWithKeyboard(chatId, `❓ هنوز سوالی ثبت نشده!`, mainMenuKeyboard)
+      } else {
+        await sendTelegramMessageWithKeyboard(chatId, `❓ سوالات متداول:\n\nروی سوال مورد نظر کلیک کنید:`, faqKeyboard)
       }
-      await sendTelegramMessageWithKeyboard(chatId, `❓ سوالات متداول:`, faqKeyboard)
       break
 
     case 'back_to_main':
@@ -607,9 +610,20 @@ async function handleCallbackQuery(callbackQuery: any) {
       
     default:
       if (data.startsWith('faq_')) {
-        const faqItem = FAQ_QUESTIONS.find(faq => faq.id === data)
-        if (faqItem) {
-          await sendTelegramMessageWithKeyboard(chatId, faqItem.answer, mainMenuKeyboard)
+        const faqId = data.replace('faq_', '')
+        try {
+          const faqItem = await prisma.fAQ.findUnique({
+            where: { id: faqId },
+          })
+          
+          if (faqItem) {
+            await sendTelegramMessageWithKeyboard(chatId, faqItem.answer, mainMenuKeyboard)
+          } else {
+            await sendTelegramMessageWithKeyboard(chatId, `❌ سوال مورد نظر پیدا نشد.`, mainMenuKeyboard)
+          }
+        } catch (error) {
+          console.error('Error fetching FAQ:', error)
+          await sendTelegramMessageWithKeyboard(chatId, `❌ خطا در دریافت پاسخ.`, mainMenuKeyboard)
         }
       }
       else if (data.startsWith('cat_')) {
