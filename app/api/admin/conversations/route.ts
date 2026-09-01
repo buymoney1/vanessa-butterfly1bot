@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
       ...conversation,
       user: {
         ...conversation.user,
-        telegramId: conversation.user.telegramId.toString(), // BigInt → String
+        telegramId: conversation.user.telegramId?.toString() ?? null, // BigInt → String | null
       },
       messages: conversation.messages.map(message => ({
         ...message,
