@@ -1,5 +1,7 @@
 // src/lib/telegramChannel.ts
 import { prisma } from './prisma'
+import { uploadBufferToS3 } from './s3-helpers'
+import { createProductFromChannelPost } from './productSync'
 
 const TELEGRAM_API = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}`
 export const CHANNEL_USERNAME = 'vanes_butterfly1'
@@ -15,14 +17,59 @@ export function extractHashtags(text: string): string[] {
 export async function getPhotoFileId(photo: any[]): Promise<string | null> {
   if (!photo || photo.length === 0) return null
   
-  // بزرگترین عکس (آخرین آیتم)
   const largestPhoto = photo[photo.length - 1]
   return largestPhoto.file_id
+}
+
+// ============ دانلود عکس از تلگرام و آپلود در S3 ============
+export async function downloadAndUploadPhoto(photoFileId: string): Promise<string | null> {
+  try {
+    console.log(`📥 Downloading photo ${photoFileId}...`)
+    
+    // ۱. دریافت اطلاعات فایل
+    const fileResponse = await fetch(`${TELEGRAM_API}/getFile?file_id=${photoFileId}`)
+    const fileData = await fileResponse.json()
+    
+    if (!fileData.ok) {
+      console.error('❌ Failed to get file info:', fileData)
+      return null
+    }
+    
+    const filePath = fileData.result.file_path
+    console.log(`   File path: ${filePath}`)
+    
+    // ۲. دانلود عکس
+    const imageResponse = await fetch(`https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${filePath}`)
+    
+    if (!imageResponse.ok) {
+      console.error('❌ Failed to download image:', imageResponse.status)
+      return null
+    }
+    
+    const imageBuffer = Buffer.from(await imageResponse.arrayBuffer())
+    console.log(`   Downloaded: ${imageBuffer.length} bytes`)
+    
+    // ۳. آپلود در S3
+    const s3Url = await uploadBufferToS3(imageBuffer, 'channel-posts')
+    
+    if (s3Url) {
+      console.log(`   ✅ Uploaded to S3: ${s3Url}`)
+    } else {
+      console.log(`   ❌ Failed to upload to S3`)
+    }
+    
+    return s3Url
+  } catch (error) {
+    console.error('❌ Error downloading/uploading photo:', error)
+    return null
+  }
 }
 
 // ============ ذخیره پست ============
 export async function saveChannelPost(post: any) {
   try {
+    console.log(`📝 Saving channel post ${post.message_id}...`)
+    
     const text = post.text || post.caption || ''
     const hashtags = extractHashtags(text)
     
@@ -32,7 +79,12 @@ export async function saveChannelPost(post: any) {
     
     if (post.photo && post.photo.length > 0) {
       photoFileId = post.photo[post.photo.length - 1].file_id
-      photoUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${photoFileId}`
+      console.log(`   Photo file_id: ${photoFileId}`)
+      
+      // دانلود از تلگرام و آپلود در S3
+      photoUrl = await downloadAndUploadPhoto(photoFileId)
+    } else {
+      console.log(`   No photo in post`)
     }
     
     const existingPost = await prisma.channelPost.findFirst({
@@ -45,11 +97,27 @@ export async function saveChannelPost(post: any) {
       },
     })
 
+    let savedPost
+
     if (existingPost) {
-      return await prisma.channelPost.update({
+      savedPost = await prisma.channelPost.update({
         where: { id: existingPost.id },
         data: {
           messageId: post.message_id,
+          text: post.text,
+          caption: post.caption,
+          hashtags,
+          photoFileId,
+          photoUrl: photoUrl || existingPost.photoUrl,
+          link: `https://t.me/${CHANNEL_USERNAME}/${post.message_id}`,
+        },
+      })
+      console.log(`   ✅ Post updated`)
+    } else {
+      savedPost = await prisma.channelPost.create({
+        data: {
+          messageId: post.message_id,
+          channelId: post.chat?.id?.toString() || '',
           text: post.text,
           caption: post.caption,
           hashtags,
@@ -58,22 +126,20 @@ export async function saveChannelPost(post: any) {
           link: `https://t.me/${CHANNEL_USERNAME}/${post.message_id}`,
         },
       })
+      console.log(`   ✅ Post created`)
     }
-
-    return await prisma.channelPost.create({
-      data: {
-        messageId: post.message_id,
-        channelId: post.chat?.id?.toString() || '',
-        text: post.text,
-        caption: post.caption,
-        hashtags,
-        photoFileId,
-        photoUrl,
-        link: `https://t.me/${CHANNEL_USERNAME}/${post.message_id}`,
-      },
-    })
+    
+    // ساخت خودکار Product
+    try {
+      await createProductFromChannelPost(savedPost)
+      console.log(`   ✅ Product auto-created`)
+    } catch (error) {
+      console.error('   ❌ Error auto-creating product:', error)
+    }
+    
+    return savedPost
   } catch (error) {
-    console.error('Error saving channel post:', error)
+    console.error('❌ Error saving channel post:', error)
     throw error
   }
 }
@@ -154,7 +220,7 @@ export async function searchPostsByHashtags(hashtags: string[]) {
 // ============ حذف تکراری‌ها ============
 function removeDuplicates(posts: any[]) {
   const uniquePosts = []
-  const seenTexts = new Set<string>() // نوع Set را مشخص کنید
+  const seenTexts = new Set<string>()
 
   for (const post of posts) {
     const text = (post.text || post.caption || '').trim()

@@ -8,34 +8,270 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ═══════════════════════════════════════════════
+// ENUMS
+// ═══════════════════════════════════════════════
+
+enum Role {
+  ADMIN
+  USER
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAYMENT_VERIFIED
+  PENDING_REVIEW
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentGatewayType {
+  ZARINPAL
+  AQAYEPARDAKHT
+}
+
+enum PaymentGatewayStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum TransactionStatus {
+  PENDING
+  VERIFIED
+  FAILED
+  CANCELLED
+}
+
+// ═══════════════════════════════════════════════
+// MODELS - کاربران و احراز هویت
+// ═══════════════════════════════════════════════
+
 model User {
-  id            String         @id @default(auto()) @map("_id") @db.ObjectId
-  telegramId    BigInt         @unique
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  name          String?
+  email         String?   
+  password      String?
+  role          Role      @default(USER)
+  telegramId    BigInt?   @unique
   username      String?
   firstName     String?
   lastName      String?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  conversations Conversation[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts             Account[]
+  sessions             Session[]
+  cartItems            CartItem[]
+  orders               Order[]
+  paymentTransactions  PaymentTransaction[]
+  conversations        Conversation[]
+  trainedFAQs          FAQ[]               @relation("TrainedFAQs")
 }
 
+model Account {
+  id                String  @id @default(auto()) @map("_id") @db.ObjectId
+  userId            String  @db.ObjectId
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.String
+  access_token      String? @db.String
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.String
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  sessionToken String   @unique
+  userId       String   @db.ObjectId
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ═══════════════════════════════════════════════
+// MODELS - محصولات و سبد خرید
+// ═══════════════════════════════════════════════
+
+model Product {
+  id                String      @id @default(auto()) @map("_id") @db.ObjectId
+  code              String?     @unique
+  title             String
+  description       String
+  price             Float
+  shippingCost      Float       @default(0)
+  images            String[]
+  category          String
+  inStock           Boolean     @default(true)
+  stockQuantity     Int         @default(0)
+  minPrepDays       Int         @default(1)
+  hasUnlimitedStock Boolean     @default(false)
+  channelPostId     String?     @unique @db.ObjectId
+  channelPost       ChannelPost? @relation(fields: [channelPostId], references: [id], onDelete: SetNull)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  cartItems         CartItem[]
+  orderItems        OrderItem[]
+
+  @@index([category])
+
+}
+
+model CartItem {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  productId String   @db.ObjectId
+  quantity  Int      @default(1)
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+}
+
+// ═══════════════════════════════════════════════
+// MODELS - سفارشات
+// ═══════════════════════════════════════════════
+
+model Order {
+  id           String              @id @default(auto()) @map("_id") @db.ObjectId
+  userId       String              @db.ObjectId
+  status       OrderStatus         @default(PENDING_PAYMENT)
+  totalAmount  Float
+  shippingDate String?
+  shippingDay  Int?
+  paymentMethod String             @default("gateway")
+  paymentRef   String?
+  note         String?
+  source       String              @default("website")
+  paidAt       DateTime?
+  reservedAt   DateTime?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  user         User                @relation(fields: [userId], references: [id])
+  items        OrderItem[]
+  transactions PaymentTransaction[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+model OrderItem {
+  id        String  @id @default(auto()) @map("_id") @db.ObjectId
+  orderId   String  @db.ObjectId
+  productId String  @db.ObjectId
+  quantity  Int     @default(1)
+  price     Float
+
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product   Product @relation(fields: [productId], references: [id])
+}
+
+// ═══════════════════════════════════════════════
+// MODELS - پرداخت و درگاه‌ها
+// ═══════════════════════════════════════════════
+
+model PaymentGateway {
+  id          String               @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  type        PaymentGatewayType
+  merchantId  String?
+  pin         String?
+  sandbox     Boolean              @default(true)
+  status      PaymentGatewayStatus @default(ACTIVE)
+  isDefault   Boolean              @default(false)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  transactions PaymentTransaction[]
+}
+
+model PaymentTransaction {
+  id          String            @id @default(auto()) @map("_id") @db.ObjectId
+  gatewayId   String            @db.ObjectId
+  userId      String            @db.ObjectId
+  orderId     String?           @db.ObjectId
+  amount      Float
+  transId     String?
+  authority   String?
+  refId       String?
+  status      TransactionStatus @default(PENDING)
+  statusCode  Int?
+  description String?
+  nonce       String            @unique
+  nonceExpiry DateTime
+  ipAddress   String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  gateway     PaymentGateway    @relation(fields: [gatewayId], references: [id])
+  user        User              @relation(fields: [userId], references: [id])
+  order       Order?            @relation(fields: [orderId], references: [id])
+}
+
+// ═══════════════════════════════════════════════
+// MODELS - مدیریت ارسال و ظرفیت
+// ═══════════════════════════════════════════════
+
+model ShippingDay {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  dayOfWeek Int      @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CapacitySlot {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  startDate  String
+  endDate    String
+  maxOrders  Int
+  usedOrders Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([startDate, endDate])
+}
+
+// ═══════════════════════════════════════════════
+// MODELS - گفتگو و پیام (پروژه بات)
+// ═══════════════════════════════════════════════
+
 model Conversation {
-  id        String         @id @default(auto()) @map("_id") @db.ObjectId
-  userId    String         @db.ObjectId
-  user      User           @relation(fields: [userId], references: [id])
+  id        String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String    @db.ObjectId
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages  Message[]
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([userId])
 }
 
 model Message {
   id             String       @id @default(auto()) @map("_id") @db.ObjectId
   conversationId String       @db.ObjectId
-  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   role           String
   content        String
   createdAt      DateTime     @default(now())
+
+  @@index([conversationId])
 }
+
+// ═══════════════════════════════════════════════
+// MODELS - محتوا و پست‌های کانال (پروژه بات)
+// ═══════════════════════════════════════════════
 
 model Content {
   id          String    @id @default(auto()) @map("_id") @db.ObjectId
@@ -54,32 +290,49 @@ model Content {
 model ChannelPost {
   id          String   @id @default(auto()) @map("_id") @db.ObjectId
   messageId   Int      @unique
-  channelId   String
+  channelId   String?
   text        String?
   caption     String?
   hashtags    String[]
-  link        String
+  link        String?
   photoFileId String?
   photoUrl    String?
+  imageData   String?
+  product     Product?
   createdAt   DateTime @default(now())
+
+  @@index([hashtags])
+
 }
+
+// ═══════════════════════════════════════════════
+// MODELS - مرسوله (پروژه بات)
+// ═══════════════════════════════════════════════
 
 model Shipment {
   id                  String   @id @default(auto()) @map("_id") @db.ObjectId
-  trackingCode        String?  // کد رهگیری سفارش
-  secondaryCode       String?  // کد رهگیری ثانویه
-  barcode             String?  // شماره بارکد
-  customerName        String?  // نام گیرنده
-  phoneNumber         String?  // شماره موبایل
-  postalCode          String?  // کدپستی گیرنده
-  destinationCity     String?  // شهر مقصد
-  destinationProvince String?  // استان مقصد
-  status              String?  // وضعیت مرسوله
-  orderNumber         String?  // شماره سفارش
-  contractNumber      String?  // شماره قرارداد
+  trackingCode        String?
+  secondaryCode       String?
+  barcode             String?
+  customerName        String?
+  phoneNumber         String?
+  postalCode          String?
+  destinationCity     String?
+  destinationProvince String?
+  status              String?
+  orderNumber         String?
+  contractNumber      String?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
+
+  @@index([customerName])
+  @@index([phoneNumber])
+  @@index([trackingCode])
 }
+
+// ═══════════════════════════════════════════════
+// MODELS - تنظیمات و FAQ
+// ═══════════════════════════════════════════════
 
 model Settings {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
@@ -95,6 +348,10 @@ model FAQ {
   answer    String
   order     Int      @default(0)
   isActive  Boolean  @default(true)
+  createdBy String?  @db.ObjectId
+  creator   User?    @relation("TrainedFAQs", fields: [createdBy], references: [id], onDelete: SetNull)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([order])
 }

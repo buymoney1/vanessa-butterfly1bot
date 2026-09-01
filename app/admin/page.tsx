@@ -6,6 +6,7 @@ import ContentList from '@/components/admin/ContentList'
 import ConversationsList from '@/components/admin/ConversationsList'
 import PostsManagement from '@/components/admin/PostsManagement'
 import FAQManagement from '@/components/admin/FAQManagement'
+import ProductsManagement from '@/components/ProductsManagement'
 import { Toaster, toast } from 'sonner'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/admin/ui/tabs'
 import { 
@@ -21,7 +22,11 @@ import {
   Sparkles,
   ChevronLeft,
   Menu,
-  X
+  X,
+  RefreshCw,
+  ShoppingBag,
+  Image as ImageIcon,
+  Download
 } from 'lucide-react'
 
 // ==================== Decorative Elements ====================
@@ -71,6 +76,8 @@ export default function AdminPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [isCheckingAuth, setIsCheckingAuth] = useState(true)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [isSyncing, setIsSyncing] = useState(false)
+  const [isDownloadingPhotos, setIsDownloadingPhotos] = useState(false)
 
   // بررسی وضعیت احراز هویت
   useEffect(() => {
@@ -144,6 +151,89 @@ export default function AdminPage() {
   const handleTabChange = (value: string) => {
     setActiveTab(value)
     setIsMobileMenuOpen(false)
+  }
+
+  // 🆕 تابع سینک محصولات (با گزینه force)
+  const handleSyncProducts = async () => {
+    if (isSyncing) return
+    
+    // تایید برای آپدیت اجباری
+    const shouldForce = confirm(
+      'گزینه‌های سینک:\n\n' +
+      'OK = بروزرسانی همه محصولات (force)\n' +
+      'Cancel = فقط محصولات جدید'
+    )
+    
+    setIsSyncing(true)
+    
+    try {
+      const response = await fetch('/api/admin/sync-products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force: shouldForce }),
+      })
+      
+      const data = await response.json()
+      
+      if (response.ok && data.success) {
+        let message = '✅ سینک کامل شد!'
+        if (data.created > 0) message += `\n🆕 ${data.created} محصول جدید`
+        if (data.updated > 0) message += `\n🔄 ${data.updated} محصول بروزرسانی شد`
+        if (data.skipped > 0) message += `\n⏭️ ${data.skipped} محصول از قبل وجود داشت`
+        if (data.noText > 0) message += `\n📝 ${data.noText} پست بدون متن`
+        if (data.noTitle > 0) message += `\n📝 ${data.noTitle} پست بدون عنوان`
+        if (data.noDescription > 0) message += `\n📝 ${data.noDescription} پست بدون توضیحات`
+        
+        toast.success(message, { duration: 5000 })
+        
+        setTimeout(() => {
+          window.location.reload()
+        }, 3000)
+      } else {
+        toast.error(data.error || 'خطا در سینک محصولات')
+      }
+    } catch (error) {
+      console.error('Sync error:', error)
+      toast.error('خطا در ارتباط با سرور')
+    } finally {
+      setIsSyncing(false)
+    }
+  }
+
+  // 🆕 تابع دانلود عکس‌های قدیمی
+  const handleDownloadPhotos = async () => {
+    if (isDownloadingPhotos) return
+    
+    if (!confirm('آیا می‌خواهید عکس‌های پست‌های قدیمی را دانلود و در S3 آپلود کنید؟')) return
+    
+    setIsDownloadingPhotos(true)
+    
+    try {
+      const response = await fetch('/api/admin/download-photos', {
+        method: 'POST',
+      })
+      
+      const data = await response.json()
+      
+      if (response.ok && data.success) {
+        toast.success(`✅ ${data.uploaded} عکس دانلود و آپلود شد!`)
+        
+        if (data.failed > 0) {
+          toast.warning(`${data.failed} عکس خطا داشت`)
+        }
+        
+        setTimeout(() => {
+          window.location.reload()
+        }, 2000)
+      } else {
+        toast.error(data.error || 'خطا در دانلود عکس‌ها')
+      }
+    } catch (error) {
+      console.error('Download photos error:', error)
+      toast.error('خطا در ارتباط با سرور')
+    } finally {
+      setIsDownloadingPhotos(false)
+    }
   }
 
   // لودینگ هنگام بررسی احراز هویت
@@ -304,6 +394,40 @@ export default function AdminPage() {
           </div>
           
           <div className="flex items-center gap-2">
+            {/* دکمه دانلود عکس‌ها */}
+            <button
+              onClick={handleDownloadPhotos}
+              disabled={isDownloadingPhotos}
+              className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 sm:py-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 rounded-full transition-colors text-xs font-bold border border-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="دانلود عکس‌های قدیمی"
+            >
+              {isDownloadingPhotos ? (
+                <Loader2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin" />
+              ) : (
+                <Download className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              )}
+              <span className="hidden lg:inline">
+                {isDownloadingPhotos ? 'در حال دانلود...' : 'دانلود عکس‌ها'}
+              </span>
+            </button>
+            
+            {/* دکمه سینک محصولات */}
+            <button
+              onClick={handleSyncProducts}
+              disabled={isSyncing}
+              className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 sm:py-2 bg-[#e6b741]/10 hover:bg-[#e6b741]/20 text-[#0F1F18] rounded-full transition-colors text-xs font-bold border border-[#e6b741]/20 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="سینک پست‌ها با محصولات"
+            >
+              {isSyncing ? (
+                <Loader2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              )}
+              <span className="hidden sm:inline">
+                {isSyncing ? 'در حال سینک...' : 'سینک محصولات'}
+              </span>
+            </button>
+            
             {/* Mobile Menu Button */}
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -345,6 +469,14 @@ export default function AdminPage() {
             </TabsTrigger>
             
             <TabsTrigger 
+              value="products" 
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all data-[state=active]:bg-[#e6b741] data-[state=active]:text-[#0F1F18] data-[state=active]:shadow-[0_4px_15px_rgba(230,183,65,0.2)] text-stone-400 hover:text-stone-600"
+            >
+              <ShoppingBag className="h-4 w-4" />
+              محصولات سایت
+            </TabsTrigger>
+            
+            <TabsTrigger 
               value="faq" 
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all data-[state=active]:bg-[#e6b741] data-[state=active]:text-[#0F1F18] data-[state=active]:shadow-[0_4px_15px_rgba(230,183,65,0.2)] text-stone-400 hover:text-stone-600"
             >
@@ -363,7 +495,7 @@ export default function AdminPage() {
 
           {/* Mobile Tabs - Bottom Navigation */}
           <div className="sm:hidden fixed bottom-0 right-0 left-0 z-30 bg-white/95 backdrop-blur-xl border-t border-stone-200/50 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
-            <div className="grid grid-cols-4 gap-1 p-2">
+            <div className="grid grid-cols-5 gap-1 p-2">
               <button
                 onClick={() => handleTabChange('contents')}
                 className={`flex flex-col items-center gap-1 py-2 rounded-xl transition-all ${
@@ -386,6 +518,18 @@ export default function AdminPage() {
               >
                 <Package className="h-5 w-5" />
                 <span className="text-[10px] font-bold">پست‌ها</span>
+              </button>
+              
+              <button
+                onClick={() => handleTabChange('products')}
+                className={`flex flex-col items-center gap-1 py-2 rounded-xl transition-all ${
+                  activeTab === 'products' 
+                    ? 'bg-[#e6b741]/10 text-[#0F1F18]' 
+                    : 'text-stone-400 hover:text-stone-600'
+                }`}
+              >
+                <ShoppingBag className="h-5 w-5" />
+                <span className="text-[10px] font-bold">محصولات</span>
               </button>
               
               <button
@@ -419,6 +563,32 @@ export default function AdminPage() {
             <div className="sm:hidden fixed inset-0 z-20 bg-black/20 backdrop-blur-sm" onClick={() => setIsMobileMenuOpen(false)}>
               <div className="absolute top-20 right-3 left-3 bg-white rounded-2xl shadow-xl border border-stone-200/50 p-2" onClick={(e) => e.stopPropagation()}>
                 <button
+                  onClick={handleDownloadPhotos}
+                  disabled={isDownloadingPhotos}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-blue-600 hover:bg-blue-50 rounded-xl transition-colors text-sm font-bold"
+                >
+                  {isDownloadingPhotos ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <Download className="h-5 w-5" />
+                  )}
+                  {isDownloadingPhotos ? 'در حال دانلود...' : 'دانلود عکس‌ها'}
+                </button>
+                
+                <button
+                  onClick={handleSyncProducts}
+                  disabled={isSyncing}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-[#0F1F18] hover:bg-amber-50 rounded-xl transition-colors text-sm font-bold"
+                >
+                  {isSyncing ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-5 w-5" />
+                  )}
+                  {isSyncing ? 'در حال سینک...' : 'سینک محصولات'}
+                </button>
+                
+                <button
                   onClick={handleLogout}
                   className="w-full flex items-center gap-3 px-4 py-3 text-red-500 hover:bg-red-50 rounded-xl transition-colors text-sm font-bold"
                 >
@@ -439,6 +609,12 @@ export default function AdminPage() {
           <TabsContent value="posts">
             <div className="mt-4 sm:mt-6 mb-20 sm:mb-0">
               <PostsManagement />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="products">
+            <div className="mt-4 sm:mt-6 mb-20 sm:mb-0">
+              <ProductsManagement />
             </div>
           </TabsContent>
 
