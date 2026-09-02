@@ -56,11 +56,9 @@ async function buildFAQKeyboard() {
   
   const keyboard = []
   
-  // ساخت دکمه‌های دو ستونه
   for (let i = 0; i < faqs.length; i += 2) {
     const row = []
     
-    // ستون اول
     row.push({
       text: faqs[i].question.length > 30 
         ? faqs[i].question.substring(0, 27) + '...' 
@@ -68,7 +66,6 @@ async function buildFAQKeyboard() {
       callback_data: faqs[i].id
     })
     
-    // ستون دوم (اگر وجود داشته باشد)
     if (faqs[i + 1]) {
       row.push({
         text: faqs[i + 1].question.length > 30 
@@ -81,7 +78,6 @@ async function buildFAQKeyboard() {
     keyboard.push(row)
   }
   
-  // دکمه بازگشت
   keyboard.push([
     { text: '🔙 بازگشت به منو', callback_data: 'back_to_main' }
   ])
@@ -166,15 +162,17 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    console.log('📥 Received webhook:', JSON.stringify(body).substring(0, 200))
+    console.log('📥 Received webhook:', JSON.stringify(body).substring(0, 300))
 
     // ============ HANDLE CHANNEL POSTS ============
     if (body.channel_post) {
+      console.log('📢 Channel post received')
       await saveChannelPost(body.channel_post)
       return NextResponse.json({ ok: true })
     }
 
     if (body.edited_channel_post) {
+      console.log('📢 Edited channel post received')
       await saveChannelPost(body.edited_channel_post)
       return NextResponse.json({ ok: true })
     }
@@ -187,7 +185,6 @@ export async function POST(request: NextRequest) {
       const fromId = body.message.from?.id
       const chatId = body.message.chat.id
       
-      // بررسی ادمین بودن
       if (ADMIN_TELEGRAM_IDS.includes(fromId)) {
         if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
           await sendTelegramMessage(chatId, '📄 فایل Excel دریافت شد. در حال پردازش...')
@@ -217,6 +214,8 @@ export async function POST(request: NextRequest) {
       body.message.forward_from_chat?.username === CHANNEL_USERNAME ||
       body.message.forward_from?.username === CHANNEL_USERNAME
     )) {
+      console.log('📨 Forwarded post from channel detected')
+      
       const forwardedPost = {
         message_id: body.message.forward_from_message_id || body.message.message_id,
         text: body.message.text,
@@ -228,8 +227,21 @@ export async function POST(request: NextRequest) {
         },
       }
       
-      await saveChannelPost(forwardedPost)
-      await sendTelegramMessage(body.message.chat.id, '✅ پست با موفقیت ذخیره شد!')
+      console.log(`   Original message_id: ${body.message.forward_from_message_id}`)
+      console.log(`   New message_id: ${body.message.message_id}`)
+      console.log(`   Has text: ${!!body.message.text}`)
+      console.log(`   Has caption: ${!!body.message.caption}`)
+      console.log(`   Has photo: ${!!body.message.photo}`)
+      
+      // 🔴 بررسی نتیجه
+      const savedPost = await saveChannelPost(forwardedPost)
+      
+      if (savedPost) {
+        await sendTelegramMessage(body.message.chat.id, '✅ پست با موفقیت ذخیره شد!')
+      } else {
+        await sendTelegramMessage(body.message.chat.id, '⚠️ پست ذخیره نشد. متن معتبر ندارد.')
+      }
+      
       return NextResponse.json({ ok: true })
     }
 
@@ -244,10 +256,10 @@ export async function POST(request: NextRequest) {
     }
 
     const { message } = body
-    const { from, chat, text, photo, caption, message_id } = message
+    const { from, chat, text, photo, caption } = message
 
     // Find or create user
-    let user = await prisma.user.findUnique({
+    let user = await prisma.user.findFirst({
       where: { telegramId: BigInt(from.id) },
     })
 
@@ -482,10 +494,9 @@ async function handleCallbackQuery(callbackQuery: any) {
   
   console.log('🔘 Button clicked:', data)
 
-  // ذخیره کلیک
   try {
     if (from) {
-      const user = await prisma.user.findUnique({
+      const user = await prisma.user.findFirst({
         where: { telegramId: BigInt(from.id) },
       })
       
