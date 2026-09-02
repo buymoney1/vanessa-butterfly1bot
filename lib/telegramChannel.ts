@@ -1,7 +1,7 @@
 // src/lib/telegramChannel.ts
 import { prisma } from './prisma'
 import { uploadBufferToS3 } from './s3-helpers'
-import { createProductFromChannelPost } from './productSync'
+import { createProductFromChannelPost, isValidProductText } from './productSync'
 
 const TELEGRAM_API = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}`
 export const CHANNEL_USERNAME = 'vanes_butterfly1'
@@ -24,7 +24,7 @@ export async function getPhotoFileId(photo: any[]): Promise<string | null> {
 // ============ دانلود عکس از تلگرام و آپلود در S3 ============
 export async function downloadAndUploadPhoto(photoFileId: string): Promise<string | null> {
   try {
-    console.log(`📥 Downloading photo ${photoFileId}...`)
+    console.log(`📥 Downloading photo ${photoFileId.substring(0, 30)}...`)
     
     // ۱. دریافت اطلاعات فایل
     const fileResponse = await fetch(`${TELEGRAM_API}/getFile?file_id=${photoFileId}`)
@@ -68,10 +68,21 @@ export async function downloadAndUploadPhoto(photoFileId: string): Promise<strin
 // ============ ذخیره پست ============
 export async function saveChannelPost(post: any) {
   try {
-    console.log(`📝 Saving channel post ${post.message_id}...`)
-    
     const text = post.text || post.caption || ''
+    
+    console.log(`\n📝 Checking post ${post.message_id}...`)
+    console.log(`   Text: ${text.substring(0, 150)}${text.length > 150 ? '...' : ''}`)
+    
+    // 🔴 اول بررسی کن که آیا متن معتبر هست
+    if (!isValidProductText(text)) {
+      console.log(`   ❌ Post is NOT valid (no title or only hashtags/code), skipping save`)
+      return null
+    }
+    
+    console.log(`   ✅ Post is valid, saving...`)
+    
     const hashtags = extractHashtags(text)
+    console.log(`   Hashtags: ${hashtags.length > 0 ? hashtags.join(', ') : 'None'}`)
     
     // دریافت file_id عکس
     let photoFileId = null
@@ -79,12 +90,12 @@ export async function saveChannelPost(post: any) {
     
     if (post.photo && post.photo.length > 0) {
       photoFileId = post.photo[post.photo.length - 1].file_id
-      console.log(`   Photo file_id: ${photoFileId}`)
+      console.log(`   📷 Photo found`)
       
       // دانلود از تلگرام و آپلود در S3
       photoUrl = await downloadAndUploadPhoto(photoFileId)
     } else {
-      console.log(`   No photo in post`)
+      console.log(`   ⚠️ No photo in post`)
     }
     
     const existingPost = await prisma.channelPost.findFirst({
@@ -112,7 +123,7 @@ export async function saveChannelPost(post: any) {
           link: `https://t.me/${CHANNEL_USERNAME}/${post.message_id}`,
         },
       })
-      console.log(`   ✅ Post updated`)
+      console.log(`   ✅ Post updated (${savedPost.id})`)
     } else {
       savedPost = await prisma.channelPost.create({
         data: {
@@ -126,13 +137,31 @@ export async function saveChannelPost(post: any) {
           link: `https://t.me/${CHANNEL_USERNAME}/${post.message_id}`,
         },
       })
-      console.log(`   ✅ Post created`)
+      console.log(`   ✅ Post created (${savedPost.id})`)
     }
     
-    // ساخت خودکار Product
+    // 🔴 ساخت خودکار Product
     try {
-      await createProductFromChannelPost(savedPost)
-      console.log(`   ✅ Product auto-created`)
+      // چک کردن product موجود
+      const existingProduct = await prisma.product.findUnique({
+        where: { channelPostId: savedPost.id },
+      })
+      
+      if (existingProduct) {
+        console.log(`   ⏭️ Product already exists, updating...`)
+        const { updateProductFromChannelPost } = await import('./productSync')
+        const updated = await updateProductFromChannelPost(savedPost)
+        if (updated) {
+          console.log(`   ✅ Product updated: ${updated.title}`)
+        }
+      } else {
+        const product = await createProductFromChannelPost(savedPost)
+        if (product) {
+          console.log(`   ✅ Product created: ${product.title}`)
+        } else {
+          console.log(`   ❌ Product creation returned null`)
+        }
+      }
     } catch (error) {
       console.error('   ❌ Error auto-creating product:', error)
     }
